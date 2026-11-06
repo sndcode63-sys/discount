@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../core/constants/app_routes.dart';
+import '../../../core/constants/api_constants.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/toast_utils.dart';
@@ -16,11 +18,52 @@ class MerchantDashboardScreen extends StatefulWidget {
 class _MerchantDashboardScreenState extends State<MerchantDashboardScreen> {
   int _currentIndex = 0;
 
+  String storeName = 'ABC General Store';
+  String storeAddress = 'Sector 15, Noida, UP';
+  double totalSales = 24580.0;
+  double cashbackGiven = 1230.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMerchantDataFromApi();
+  }
+
+  Future<void> _fetchMerchantDataFromApi() async {
+    try {
+      final user = await ApiClient().getUserData();
+      if (user != null) {
+        if (user['name'] != null && user['name'].toString().isNotEmpty) {
+          storeName = user['name'].toString();
+        }
+        if (user['phone'] != null && user['phone'].toString().isNotEmpty) {
+          storeAddress = '+91 ${user['phone']}';
+        }
+      }
+
+      final response = await ApiClient().get(ApiConstants.adminDashboard);
+      if (response.success && response.data != null) {
+        final data = response.data as Map<String, dynamic>;
+        if (data['totalSales'] != null) {
+          totalSales = (data['totalSales'] as num).toDouble();
+        }
+        if (data['cashbackGiven'] != null) {
+          cashbackGiven = (data['cashbackGiven'] as num).toDouble();
+        }
+      }
+
+      setState(() {});
+    } catch (e) {
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFE53935), // Red top header
       body: SafeArea(
+        bottom: false,
         child: IndexedStack(
           index: _currentIndex,
           children: [
@@ -31,58 +74,70 @@ class _MerchantDashboardScreenState extends State<MerchantDashboardScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildFloatingBottomNavBar(),
+      bottomNavigationBar: _buildFloatingMerchantBottomBar(),
     );
   }
 
-  Widget _buildFloatingBottomNavBar() {
+  Widget _buildFloatingMerchantBottomBar() {
     return Container(
-      margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16, top: 4),
+      margin: const EdgeInsets.only(left: 14, right: 14, bottom: 14, top: 4),
+      height: 62,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: BottomNavigationBar(
-          elevation: 0,
-          backgroundColor: Colors.white,
-          currentIndex: _currentIndex,
-          selectedItemColor: AppColors.primary,
-          unselectedItemColor: AppColors.textTertiary,
-          type: BottomNavigationBarType.fixed,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'Dashboard',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_outlined),
-              activeIcon: Icon(Icons.inventory_2),
-              label: 'Products',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_outlined),
-              activeIcon: Icon(Icons.receipt_long),
-              label: 'Orders',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: 'Profile',
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(0, Icons.dashboard_outlined, Icons.dashboard, 'Dashboard'),
+          _buildNavItem(1, Icons.inventory_2_outlined, Icons.inventory_2, 'Products', onTapOverride: () {
+            Get.toNamed(AppRoutes.merchantProducts);
+          }),
+          _buildNavItem(2, Icons.receipt_long_outlined, Icons.receipt_long, 'Bills', onTapOverride: () {
+            Get.toNamed(AppRoutes.merchantBilling);
+          }),
+          _buildNavItem(3, Icons.person_outline, Icons.person, 'Profile'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, IconData activeIcon, String label,
+      {VoidCallback? onTapOverride}) {
+    final bool isSelected = _currentIndex == index;
+    final color = isSelected ? const Color(0xFFE53935) : Colors.grey[500];
+
+    return InkWell(
+      onTap: () {
+        if (onTapOverride != null) {
+          onTapOverride();
+        } else {
+          setState(() {
+            _currentIndex = index;
+          });
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Column(
+          mainAxisAlignment: Main.center,
+          children: [
+            Icon(isSelected ? activeIcon : icon, color: color, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
             ),
           ],
         ),
@@ -91,216 +146,401 @@ class _MerchantDashboardScreenState extends State<MerchantDashboardScreen> {
   }
 
   Widget _buildDashboardContent() {
-    return CustomScrollView(
-      slivers: [
-        // White App Bar
-        SliverAppBar(
-          floating: true,
-          backgroundColor: Colors.white,
-          elevation: 0,
-          title: Row(
+    return Column(
+      children: [
+        // 1. Red Header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          color: const Color(0xFFE53935),
+          child: Row(
             children: [
-              Image.asset(
-                'assets/images/app_logo.png',
-                height: 26,
-                fit: BoxFit.contain,
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.store,
+                  color: Color(0xFFE53935),
+                  size: 22,
+                ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                'Merchant',
-                style: AppTextStyles.h5.copyWith(color: AppColors.textPrimary),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Merchant',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'Grow Your Business',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined,
+                    color: Colors.white, size: 26),
+                onPressed: () {
+                  ToastUtils.info('Merchant Notifications');
+                },
               ),
             ],
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined, color: AppColors.textPrimary),
-              onPressed: () {
-                ToastUtils.info('Opening Merchant Notifications');
-              },
-            ),
-          ],
         ),
-        // Stats Cards
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Today\'s Sales',
-                        '₹12,500',
-                        Icons.trending_up,
-                        AppColors.success,
-                      ),
+
+        // 2. White Body Container Overlay
+        Expanded(
+          child: Container(
+            decoration: const BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Store Card matching Screenshot
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Orders',
-                        '45',
-                        Icons.shopping_bag,
-                        AppColors.primary,
-                      ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F6F4),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.storefront,
+                              color: Color(0xFFE53935), size: 32),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    storeName,
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE8F5E9),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.check_circle,
+                                            size: 10, color: Color(0xFF2E7D32)),
+                                        SizedBox(width: 2),
+                                        Text(
+                                          'Verified',
+                                          style: TextStyle(
+                                            color: Color(0xFF2E7D32),
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                storeAddress,
+                                style: TextStyle(
+                                    color: Colors.grey[600], fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Products',
-                        '128',
-                        Icons.inventory,
-                        AppColors.info,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 2 KPI Stat Cards
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildKpiCard(
+                          'Total Sales ➔',
+                          '₹${totalSales.toStringAsFixed(0)}',
+                          '↑ 12%',
+                          Icons.account_balance_wallet,
+                          const Color(0xFFE53935),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Customers',
-                        '256',
-                        Icons.people,
-                        AppColors.warning,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildKpiCard(
+                          'Cashback Given',
+                          '₹${cashbackGiven.toStringAsFixed(0)}',
+                          '↑ 10%',
+                          Icons.stars,
+                          const Color(0xFFFFB300),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 4 Quick Action Buttons Grid matching Screenshot
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildActionGridButton(
+                          'Add Products', Icons.add_box, const Color(0xFFE53935),
+                          () {
+                        Get.toNamed(AppRoutes.merchantAddProduct);
+                      }),
+                      _buildActionGridButton(
+                          'Update Prices', Icons.local_offer, const Color(0xFF7B1FA2),
+                          () {
+                        Get.toNamed(AppRoutes.merchantProducts);
+                      }),
+                      _buildActionGridButton(
+                          'View Bills', Icons.receipt_long, const Color(0xFF1976D2),
+                          () {
+                        Get.toNamed(AppRoutes.merchantBilling);
+                      }),
+                      _buildActionGridButton(
+                          'Sales Report', Icons.bar_chart, const Color(0xFF2E7D32),
+                          () {
+                        Get.toNamed(AppRoutes.merchantSalesReport);
+                      }),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Quick Actions List
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Quick Actions',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {},
+                        child: const Text('See All ➔',
+                            style: TextStyle(
+                                color: Color(0xFFE53935),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  _buildQuickActionListTile(
+                      'Manage Inventory', Icons.inventory, () {
+                    Get.toNamed(AppRoutes.merchantInventory);
+                  }),
+                  _buildQuickActionListTile(
+                      'View Customer Bills', Icons.description, () {
+                    Get.toNamed(AppRoutes.merchantBilling);
+                  }),
+                  _buildQuickActionListTile(
+                      'Check Cashback Summary', Icons.monetization_on, () {
+                    Get.toNamed(AppRoutes.merchantCashback);
+                  }),
+                  _buildQuickActionListTile('Store Settings', Icons.settings,
+                      () {
+                    Get.toNamed(AppRoutes.merchantSettings);
+                  }),
+                  const SizedBox(height: 20),
+
+                  // Grow Business Banner matching Screenshot
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFFFB74D)),
                     ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        // Quick Actions
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              'Quick Actions',
-              style: AppTextStyles.semiboldMedium,
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildQuickAction(
-                    'Add Product',
-                    Icons.add_circle,
-                    () {
-                      Get.toNamed(AppRoutes.merchantAddProduct);
-                    },
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Grow Your Business',
+                                style: TextStyle(
+                                  color: Color(0xFFE65100),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Get More Customers, Increase Local Repeat Sales with Discount App.',
+                                style: TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.trending_up,
+                            size: 45, color: Color(0xFFE65100)),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickAction(
-                    'Billing',
-                    Icons.qr_code_scanner,
-                    () {
-                      Get.toNamed(AppRoutes.merchantBilling);
-                    },
-                  ),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ),
-        const SliverToBoxAdapter(child: SizedBox(height: 12)),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildQuickAction(
-                    'Share QR',
-                    Icons.share,
-                    () {
-                      Get.toNamed(AppRoutes.merchantShareQR);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickAction(
-                    'Offers',
-                    Icons.local_offer,
-                    () {
-                      Get.toNamed(AppRoutes.merchantOffers);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        // Recent Orders
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Recent Orders',
-                  style: AppTextStyles.semiboldMedium,
-                ),
-                TextButton(
-                  onPressed: () {
-                    ToastUtils.info('Opening All Merchant Orders');
-                    Get.toNamed(AppRoutes.merchantSalesReport);
-                  },
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: _buildOrderCard('#12345', '₹250', 'Completed'),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: _buildOrderCard('#12346', '₹180', 'Pending'),
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 20)),
       ],
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 26),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: AppTextStyles.h5.copyWith(fontWeight: FontWeight.bold),
+  Widget _buildKpiCard(
+      String label, String value, String trend, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  trend,
+                  style: const TextStyle(
+                    color: Color(0xFF2E7D32),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
-            const SizedBox(height: 4),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(color: Colors.grey[600], fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionGridButton(
+      String title, IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 80,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(height: 6),
             Text(
               title,
-              style: AppTextStyles.caption.copyWith(
-                color: AppColors.textSecondary,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
@@ -309,204 +549,144 @@ class _MerchantDashboardScreenState extends State<MerchantDashboardScreen> {
     );
   }
 
-  Widget _buildQuickAction(String title, IconData icon, VoidCallback onTap) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Icon(icon, color: AppColors.primary, size: 30),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: AppTextStyles.semiboldSmall,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOrderCard(String orderId, String amount, String status) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: ListTile(
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.primaryLight.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: const Icon(Icons.receipt, color: AppColors.primary),
-        ),
-        title: Text('Order $orderId', style: AppTextStyles.semiboldMedium),
-        subtitle: Text(amount, style: AppTextStyles.bodyMedium),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: status == 'Completed'
-                ? AppColors.success
-                : AppColors.warning,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            status,
-            style: AppTextStyles.overline.copyWith(color: AppColors.textWhite, fontWeight: FontWeight.bold),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProductsContent() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.inventory_2_outlined,
-            size: 90,
-            color: AppColors.textTertiary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Inventory & Products',
-            style: AppTextStyles.h5,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Manage store listings and stock levels',
-            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () {
-              Get.toNamed(AppRoutes.merchantProducts);
-            },
-            child: const Text('Manage Products'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrdersContent() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.receipt_long_outlined,
-            size: 90,
-            color: AppColors.textTertiary,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Sales & Orders',
-            style: AppTextStyles.h5,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'View order history & customer bills',
-            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () {
-              Get.toNamed(AppRoutes.merchantSalesReport);
-            },
-            child: const Text('View Sales Report'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProfileContent() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          const SizedBox(height: 20),
-          CircleAvatar(
-            radius: 46,
-            backgroundColor: AppColors.primary,
-            child: const Icon(
-              Icons.store,
-              size: 50,
-              color: AppColors.textWhite,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'FreshMart Store',
-            style: AppTextStyles.h4,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '+91 9876543210 • Sector 15 Noida',
-            style: AppTextStyles.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _buildMenuItem(Icons.inventory, 'My Products', () {
-            Get.toNamed(AppRoutes.merchantProducts);
-          }),
-          _buildMenuItem(Icons.analytics, 'Analytics & Reports', () {
-            Get.toNamed(AppRoutes.merchantAnalytics);
-          }),
-          _buildMenuItem(Icons.account_balance_wallet, 'Merchant Wallet', () {
-            Get.toNamed(AppRoutes.merchantWallet);
-          }),
-          _buildMenuItem(Icons.account_balance, 'Bank Settlements', () {
-            Get.toNamed(AppRoutes.merchantSettlements);
-          }),
-          _buildMenuItem(Icons.local_offer, 'Store Offers', () {
-            Get.toNamed(AppRoutes.merchantOffers);
-          }),
-          _buildMenuItem(Icons.subscriptions, 'Subscription Plan', () {
-            Get.toNamed(AppRoutes.merchantSubscription);
-          }),
-          _buildMenuItem(Icons.settings, 'Settings', () {
-            Get.toNamed(AppRoutes.merchantSettings);
-          }),
-          _buildMenuItem(Icons.help, 'Support', () {
-            Get.toNamed(AppRoutes.merchantSupport);
-          }),
-          _buildMenuItem(Icons.logout, 'Logout', () {
-            ToastUtils.info('Logged out from Merchant Portal');
-            Get.offAllNamed(AppRoutes.merchantLogin);
-          }, color: AppColors.error),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMenuItem(IconData icon, String title, VoidCallback onTap, {Color? color}) {
+  Widget _buildQuickActionListTile(
+      String title, IconData icon, VoidCallback onTap) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
       color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppColors.border),
+        side: BorderSide(color: Colors.grey[200]!),
       ),
       child: ListTile(
-        leading: Icon(icon, color: color ?? AppColors.primary),
+        leading: Icon(icon, color: const Color(0xFFE53935)),
         title: Text(
           title,
-          style: AppTextStyles.bodyMedium.copyWith(color: color, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+              color: Colors.black, fontWeight: FontWeight.w600, fontSize: 14),
         ),
         trailing: const Icon(Icons.arrow_forward_ios, size: 14),
         onTap: onTap,
+      ),
+    );
+  }
+
+  Widget _buildProductsContent() {
+    return Container(
+      color: AppColors.background,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text('Inventory & Products',
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () {
+                Get.toNamed(AppRoutes.merchantProducts);
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE53935)),
+              child: const Text('Manage Products Catalog'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrdersContent() {
+    return Container(
+      color: AppColors.background,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.receipt_long_outlined, size: 80, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text('Customer Bills & Sales',
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () {
+                Get.toNamed(AppRoutes.merchantSalesReport);
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE53935)),
+              child: const Text('View Sales Reports'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileContent() {
+    return Container(
+      color: AppColors.background,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            CircleAvatar(
+              radius: 44,
+              backgroundColor: const Color(0xFFE53935),
+              child: const Icon(
+                Icons.store,
+                size: 46,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              storeName,
+              style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              storeAddress,
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+            _buildQuickActionListTile('My Products Catalog', Icons.inventory,
+                () {
+              Get.toNamed(AppRoutes.merchantProducts);
+            }),
+            _buildQuickActionListTile('Analytics & Reports', Icons.analytics,
+                () {
+              Get.toNamed(AppRoutes.merchantAnalytics);
+            }),
+            _buildQuickActionListTile('Merchant Wallet', Icons.account_balance_wallet,
+                () {
+              Get.toNamed(AppRoutes.merchantWallet);
+            }),
+            _buildQuickActionListTile('Bank Settlements', Icons.account_balance,
+                () {
+              Get.toNamed(AppRoutes.merchantSettlements);
+            }),
+            _buildQuickActionListTile('Store Settings', Icons.settings, () {
+              Get.toNamed(AppRoutes.merchantSettings);
+            }),
+            _buildQuickActionListTile('Logout', Icons.logout, () async {
+              await ApiClient().clearAuth();
+              ToastUtils.info('Logged out from Merchant Portal');
+              Get.offAllNamed(AppRoutes.merchantLogin);
+            }),
+          ],
+        ),
       ),
     );
   }

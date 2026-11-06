@@ -1,6 +1,4 @@
 export 'store_model.dart';
-
-// Backwards-compatible Store class
 import 'store_model.dart';
 
 class Store {
@@ -23,13 +21,13 @@ class Store {
     required this.address,
     required this.distance,
     required this.imageUrl,
-    this.rating = 4.0,
+    this.rating = 0.0,
     required this.phone,
     this.isOpen = true,
     required this.category,
-    this.latitude = 28.5800,
-    this.longitude = 77.3180,
-    this.cashbackPercentage = 5.0,
+    this.latitude = 0.0,
+    this.longitude = 0.0,
+    this.cashbackPercentage = 0.0,
   });
 
   StoreModel toStoreModel() {
@@ -64,5 +62,9 @@ class Store {
       longitude: model.longitude,
       cashbackPercentage: model.defaultCashbackPercentage,
     );
+  }
+
+  factory Store.fromJson(Map<String, dynamic> json) {
+    return Store.fromModel(StoreModel.fromJson(json));
   }
 }

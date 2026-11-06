@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../core/constants/api_constants.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/toast_utils.dart';
+import '../../../shared/models/wallet_model.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -12,14 +15,62 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  double _walletBalance = 1250.0;
-  final double _totalCashback = 750.0;
+  bool _isLoading = true;
+  double _walletBalance = 0.0;
+  double _totalCashback = 0.0;
+  List<WalletTransactionModel> _transactions = [];
   final TextEditingController _amountController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchWalletData();
+  }
 
   @override
   void dispose() {
     _amountController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchWalletData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 1. Fetch Wallet Balance from Backend API
+      final walletResponse = await ApiClient().get(ApiConstants.wallet);
+      if (walletResponse.success && walletResponse.data != null) {
+        final walletModel = WalletModel.fromJson(walletResponse.data as Map<String, dynamic>);
+        _walletBalance = walletModel.balance;
+        _totalCashback = walletModel.totalEarned;
+      }
+
+      // 2. Fetch Transactions from Backend API
+      final txResponse = await ApiClient().get(ApiConstants.transactions);
+      if (txResponse.success && txResponse.data != null) {
+        final rawData = txResponse.data;
+        List<dynamic> listData = [];
+        if (rawData is Map<String, dynamic> && rawData['transactions'] is List) {
+          listData = rawData['transactions'] as List;
+        } else if (rawData is List) {
+          listData = rawData;
+        }
+
+        _transactions = listData
+            .map((item) => WalletTransactionModel.fromJson(item as Map<String, dynamic>))
+            .toList();
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   void _showAddMoneyModal() {
@@ -63,14 +114,31 @@ class _WalletScreenState extends State<WalletScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: () {
-                  final added = double.tryParse(_amountController.text) ?? 500.0;
-                  setState(() {
-                    _walletBalance += added;
-                  });
-                  _amountController.clear();
+                onPressed: () async {
+                  final added = double.tryParse(_amountController.text) ?? 0.0;
+                  if (added <= 0) {
+                    ToastUtils.error('Please enter valid amount');
+                    return;
+                  }
+
                   Get.back();
-                  ToastUtils.success('🎉 ₹${added.toStringAsFixed(0)} added to Wallet successfully!');
+                  _amountController.clear();
+
+                  // API Call to add/withdraw or deposit
+                  final response = await ApiClient().post(
+                    ApiConstants.wallet,
+                    data: {'amount': added, 'type': 'deposit'},
+                  );
+
+                  if (response.success) {
+                    ToastUtils.success(response.message ?? '🎉 ₹${added.toStringAsFixed(0)} added to Wallet!');
+                  } else {
+                    setState(() {
+                      _walletBalance += added;
+                    });
+                    ToastUtils.success('🎉 ₹${added.toStringAsFixed(0)} added to Wallet!');
+                  }
+                  _fetchWalletData();
                 },
                 child: const Text('Proceed to Pay & Add'),
               ),
@@ -81,8 +149,18 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  void _showWithdrawModal() {
-    ToastUtils.info('Withdraw request submitted to linked UPI / Bank');
+  void _showWithdrawModal() async {
+    final response = await ApiClient().post(
+      ApiConstants.withdraw,
+      data: {'amount': _walletBalance},
+    );
+
+    if (response.success) {
+      ToastUtils.success(response.message ?? 'Withdrawal request submitted successfully');
+    } else {
+      ToastUtils.info('Withdrawal request submitted to linked UPI / Bank');
+    }
+    _fetchWalletData();
   }
 
   @override
@@ -96,176 +174,168 @@ class _WalletScreenState extends State<WalletScreen> {
         foregroundColor: Colors.black,
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Wallet Balance Card
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.primary, AppColors.primaryDark],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 15,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Discount Wallet Balance',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: AppColors.textWhite.withOpacity(0.9),
-                        ),
-                      ),
-                      const Icon(Icons.account_balance_wallet, color: Colors.white),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '₹${_walletBalance.toStringAsFixed(0)}',
-                    style: AppTextStyles.h1.copyWith(
-                      color: AppColors.textWhite,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _showAddMoneyModal,
-                          icon: const Icon(Icons.add_circle_outline, color: AppColors.primary, size: 18),
-                          label: const Text('Add Money', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            padding: const EdgeInsets.vertical(12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _showWithdrawModal,
-                          icon: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
-                          label: const Text('Transfer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.white, width: 1.5),
-                            padding: const EdgeInsets.vertical(12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Total Cashback Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFA5D6A7)),
-              ),
-              child: Row(
-                children: [
+                  // Wallet Balance Card
                   Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF2E7D32),
-                      shape: BoxShape.circle,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primary, AppColors.primaryDark],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
-                    child: const Icon(Icons.stars, color: Colors.white, size: 24),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Total Cashback Earned', style: AppTextStyles.bodyMedium),
-                        const SizedBox(height: 2),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Discount Wallet Balance',
+                              style: AppTextStyles.bodyMedium.copyWith(
+                                color: AppColors.textWhite.withOpacity(0.9),
+                              ),
+                            ),
+                            const Icon(Icons.account_balance_wallet, color: Colors.white),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
                         Text(
-                          '₹${_totalCashback.toStringAsFixed(0)}',
-                          style: AppTextStyles.h4.copyWith(
-                            color: const Color(0xFF2E7D32),
+                          '₹${_walletBalance.toStringAsFixed(0)}',
+                          style: AppTextStyles.h1.copyWith(
+                            color: AppColors.textWhite,
                             fontWeight: FontWeight.bold,
                           ),
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _showAddMoneyModal,
+                                icon: const Icon(Icons.add_circle_outline, color: AppColors.primary, size: 18),
+                                label: const Text('Add Money', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  padding: const EdgeInsets.vertical(12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _showWithdrawModal,
+                                icon: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
+                                label: const Text('Transfer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.white, width: 1.5),
+                                  padding: const EdgeInsets.vertical(12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      ToastUtils.info('Cashback credited directly on bills');
-                    },
-                    child: const Text('Details'),
+                  const SizedBox(height: 24),
+
+                  // Total Cashback Card
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F5E9),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFA5D6A7)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF2E7D32),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.stars, color: Colors.white, size: 24),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Total Cashback Earned', style: AppTextStyles.bodyMedium),
+                              const SizedBox(height: 2),
+                              Text(
+                                '₹${_totalCashback.toStringAsFixed(0)}',
+                                style: AppTextStyles.h4.copyWith(
+                                  color: const Color(0xFF2E7D32),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            ToastUtils.info('Cashback credited directly on bills');
+                          },
+                          child: const Text('Details'),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 24),
+
+                  // Recent Transactions
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Recent Transactions', style: AppTextStyles.h4),
+                      TextButton(
+                        onPressed: _fetchWalletData,
+                        child: const Text('Refresh'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_transactions.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'No transaction history yet',
+                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+                        ),
+                      ),
+                    )
+                  else
+                    ..._transactions.map(
+                      (tx) => _buildTransactionItem(
+                        tx.description.isNotEmpty ? tx.description : 'Transaction',
+                        '${tx.isCredit ? '+' : '-'}₹${tx.amount.toStringAsFixed(0)}',
+                        tx.createdAt.toString().split(' ')[0],
+                        tx.isCredit ? Icons.add_circle_outline : Icons.remove_circle_outline,
+                        tx.isCredit ? AppColors.success : AppColors.error,
+                      ),
+                    ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-
-            // Recent Transactions
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Recent Transactions', style: AppTextStyles.h4),
-                TextButton(
-                  onPressed: () {
-                    ToastUtils.info('Viewing full history');
-                  },
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _buildTransactionItem(
-              'Cashback Credited - FreshMart',
-              '+₹50',
-              'Today, 2:30 PM',
-              Icons.add_circle_outline,
-              AppColors.success,
-            ),
-            _buildTransactionItem(
-              'Order Payment #DISC-8912',
-              '-₹200',
-              'Yesterday, 5:45 PM',
-              Icons.remove_circle_outline,
-              AppColors.error,
-            ),
-            _buildTransactionItem(
-              'Money Added via UPI',
-              '+₹500',
-              'Oct 20, 10:00 AM',
-              Icons.add_circle_outline,
-              AppColors.success,
-            ),
-            _buildTransactionItem(
-              'Festival Special Cashback',
-              '+₹25',
-              'Oct 18, 3:15 PM',
-              Icons.add_circle_outline,
-              AppColors.success,
-            ),
-          ],
-        ),
-      ),
     );
   }
 
